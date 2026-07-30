@@ -118,6 +118,14 @@ public class VoiceCaptureService : IDisposable {
         }
     }
 
+    // --- External push-to-talk trigger (e.g. a VR controller signal relayed from the mod,
+    // bypassing the keyboard IHotkeyListener/PttSubMode debounce entirely -- a physical
+    // press/release from the mod is already an unambiguous edge) ---
+
+    public void ActivateExternal() => Activate();
+
+    public void DeactivateExternal() => Deactivate();
+
     // --- Push-to-talk handlers ---
 
     private void HandleKeyPressed() {

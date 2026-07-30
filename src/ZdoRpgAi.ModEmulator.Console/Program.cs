@@ -5,10 +5,12 @@ using ZdoRpgAi.Util;
 var parser = new CommandLineArgsParser("Zdo RPG AI Mod Emulator", BuildInfo.Version);
 parser.Add("--host", "Host to listen on", defaultValue: "localhost");
 parser.Add("-p", "--port", "Port to listen on", defaultValue: "8081");
+parser.Add("--auto-say", "Non-interactive smoke test: once a client connects, say this to the default target and exit after the reply", defaultValue: "");
 
 var parsed = parser.Parse(args);
 var host = parsed.Get("--host")!;
 var port = int.Parse(parsed.Get("--port")!);
+var autoSay = parsed.Get("--auto-say");
 
 Logger.Configure(new LogConfig { ConsoleLevel = LogLevel.Debug });
 var log = Logger.Get<EmulatorServer>();
@@ -30,6 +32,35 @@ var server = new EmulatorServer(host, port);
 log.Info("Listening on {Host}:{Port}", host, port);
 
 var serverTask = server.RunAsync(cts.Token);
+
+if (!string.IsNullOrEmpty(autoSay)) {
+    // Non-interactive smoke test: skip the raw-console REPL entirely (it doesn't play well
+    // with redirected/automated stdin) and just wait for a client to connect, say the line,
+    // then give it time to log the NPC's reply before exiting on its own.
+    _ = Task.Run(async () => {
+        log.Info("[auto-say] Waiting for client to connect...");
+        while (server.Session == null && !cts.Token.IsCancellationRequested) {
+            await Task.Delay(200, cts.Token).ConfigureAwait(false);
+        }
+        if (cts.Token.IsCancellationRequested) return;
+
+        await Task.Delay(5000, cts.Token).ConfigureAwait(false); // let PlayerAdded/default target settle, and give the client's separate server websocket connection time to finish too
+        log.Info("[auto-say] Sending: \"{Text}\"", autoSay);
+        server.Session!.SendPlayerSpeaksText(autoSay);
+
+        await Task.Delay(30000, cts.Token).ConfigureAwait(false); // window for LLM+TTS round trip
+        log.Info("[auto-say] Done, shutting down");
+        cts.Cancel();
+    }, cts.Token);
+
+    try {
+        await serverTask;
+    }
+    catch (OperationCanceledException) {
+        // Normal shutdown
+    }
+    return;
+}
 
 // Interactive command loop
 var input = new ConsoleInput();

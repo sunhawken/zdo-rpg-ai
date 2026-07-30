@@ -10,9 +10,11 @@ using ZdoRpgAi.Server.Lua;
 using ZdoRpgAi.Server.SpeechToText;
 using ZdoRpgAi.Server.SpeechToText.Deepgram;
 using ZdoRpgAi.Server.SpeechToText.Dummy;
+using ZdoRpgAi.Server.SpeechToText.OpenAi;
 using ZdoRpgAi.Server.TextToSpeech;
 using ZdoRpgAi.Server.TextToSpeech.Dummy;
 using ZdoRpgAi.Server.TextToSpeech.ElevenLabs;
+using ZdoRpgAi.Server.TextToSpeech.OpenAi;
 
 namespace ZdoRpgAi.Server.Bootstrap;
 
@@ -47,6 +49,8 @@ public static class ServerBootstrap {
             "dummy" => new DummyTextToSpeech(),
             "elevenlabs" => new ElevenLabsTextToSpeech(config.ElevenLabs
                 ?? throw new InvalidOperationException("tts.elevenLabs config is required when provider is 'elevenlabs'")),
+            "openai" => new OpenAiTextToSpeech(config.OpenAi
+                ?? throw new InvalidOperationException("tts.openAi config is required when provider is 'openai'")),
             _ => throw new InvalidOperationException($"Unknown TTS provider: {config.Provider}"),
         };
     }
@@ -57,6 +61,8 @@ public static class ServerBootstrap {
             "dummy" => new DummySpeechToText(),
             "deepgram" => new DeepgramSpeechToText(config.Deepgram
                 ?? throw new InvalidOperationException("stt.deepgram config is required when provider is 'deepgram'")),
+            "openai" => new OpenAiSpeechToText(config.OpenAi
+                ?? throw new InvalidOperationException("stt.openAi config is required when provider is 'openai'")),
             _ => throw new InvalidOperationException($"Unknown STT provider: {config.Provider}"),
         };
     }

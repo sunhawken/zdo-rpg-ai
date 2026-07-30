@@ -174,7 +174,7 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
 
         var systemPrompt = $"""
             You are {npc.Name}, a {npc.Race} ({npc.Sex}), living in Morrowind.
-            Stay in character. Speak briefly and naturally. Do not mention that you are an AI. Always respond in the Russian language.
+            Stay in character. Speak briefly and naturally. Do not mention that you are an AI. Always respond in the English language.
 
             You will be told what other characters say and do. Reply only with your own speech.
 

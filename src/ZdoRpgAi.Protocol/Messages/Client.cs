@@ -12,6 +12,14 @@ public record SayMp3FilePayload(string NpcId, string Mp3Name, string Text, doubl
 
 public record StartSessionAckPayload(string SessionId);
 
+// A VR controller button bound in-game to the mod's push-to-talk action (see
+// zdorpgai/scripts/zdorpgai/player.lua). Purely a local trigger for VoiceCaptureService --
+// unlike ModToServerMessageType members, these never get forwarded to the server.
+public enum ModToClientMessageType {
+    VrPttPressed,
+    VrPttReleased,
+}
+
 // Client → Both (Mod + Server)
 
 public enum ClientToBothMessageType {

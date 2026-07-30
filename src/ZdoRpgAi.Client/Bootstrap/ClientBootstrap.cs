@@ -47,7 +47,9 @@ public static class ClientBootstrap {
         VoiceCaptureService? voiceCapture = null;
         if (config.VoiceCapture is { Enabled: true } vc) {
             var mic = new PortAudioMicrophoneListener(vc.SampleRate, vc.FrameSizeSamples, vc.DeviceIndex);
-            var hotkey = new MacosHotkeyListener(vc.PttKey);
+            IHotkeyListener hotkey = OperatingSystem.IsWindows()
+                ? new WindowsHotkeyListener(vc.PttKey)
+                : new MacosHotkeyListener(vc.PttKey);
             voiceCapture = new VoiceCaptureService(vc, mic, hotkey);
         }
 

@@ -17,7 +17,7 @@ httpServer:
   rpcTimeoutMs: 5000
   clientToken: ""
 
-# Text-to-speech (dummy | elevenlabs)
+# Text-to-speech (dummy | elevenlabs | openai)
 tts:
   provider: dummy
   # elevenLabs:
@@ -32,11 +32,20 @@ tts:
   #     byRaceSex:
   #       dm: "<voiceId>"
   #       df: "<voiceId>"
+  # openAi:
+  #   apiKey: ""
+  #   model: tts-1
+  #   baseUrl: https://api.openai.com
+  #   voiceMapping:
+  #     fallback: alloy
+  #     byRaceSex:
+  #       dm: onyx
+  #       df: nova
   mp3Speed:
     ffmpegExePath: ffmpeg
     charactersPerSecond: 15
 
-# Speech-to-text (dummy | deepgram)
+# Speech-to-text (dummy | deepgram | openai)
 stt:
   provider: dummy
   # deepgram:
@@ -45,6 +54,12 @@ stt:
   #   encoding: linear16
   #   language: en
   #   model: nova-2
+  # openAi:
+  #   apiKey: ""
+  #   model: whisper-1
+  #   baseUrl: https://api.openai.com
+  #   sampleRate: 16000
+  #   language: en
 
 # Director
 director:

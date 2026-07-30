@@ -133,6 +133,14 @@ public class ClientApplication : IDisposable {
 
                     break;
                 }
+            case nameof(ModToClientMessageType.VrPttPressed):
+                Log.Debug("VR push-to-talk pressed");
+                _voiceCapture?.ActivateExternal();
+                return; // local trigger only -- Activate() already sends its own PlayerStartSpeak
+            case nameof(ModToClientMessageType.VrPttReleased):
+                Log.Debug("VR push-to-talk released");
+                _voiceCapture?.DeactivateExternal();
+                return; // local trigger only -- Deactivate() already sends its own PlayerStopSpeak
         }
 
         _bridge.SendMessageToServer(msg);
