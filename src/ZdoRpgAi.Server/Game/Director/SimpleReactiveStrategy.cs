@@ -34,7 +34,7 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
             .ToHashSet();
         Log.Trace("Found {Count} player IDs: {Ids}", playerIds.Count, string.Join(", ", playerIds));
 
-        var (npcId, gameTime) = await FindLastTargetedNpcAsync(_rpc, events, playerIds);
+        var (npcId, interlocutorId, gameTime) = await FindLastTargetedNpcAsync(_rpc, events, playerIds);
         if (npcId == null) {
             Log.Debug("No target NPC found in events");
             return [];
@@ -49,10 +49,12 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
                 return [];
             }
 
+            var interlocutorInfo = interlocutorId != null ? await GetCharacterInfoAsync(interlocutorId) : null;
+
             Log.Trace("NPC info: {Name} ({Race} {Sex})", npcInfo.Name, npcInfo.Race, npcInfo.Sex);
             var (history, summaries) = await _story.GetHistoryForCharacterAsync(npcId);
             Log.Trace("History: {HistoryCount} events, {SummaryCount} summaries", history.Count, summaries.Count);
-            var response = await GenerateNpcResponseAsync(npcInfo, history, summaries);
+            var response = await GenerateNpcResponseAsync(npcInfo, interlocutorInfo, history, summaries);
             if (response == null) {
                 Log.Warn("LLM returned no response for NPC {NpcId}", npcId);
                 return [];
@@ -73,7 +75,7 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
         }
     }
 
-    private async Task<(string? NpcId, string? GameTime)> FindLastTargetedNpcAsync(
+    private async Task<(string? NpcId, string? InterlocutorId, string? GameTime)> FindLastTargetedNpcAsync(
         IRpcChannel rpc, List<StoryEvent> events, HashSet<string> playerIds) {
         Log.Trace("Finding last targeted NPC from {Count} events", events.Count);
         for (var i = events.Count - 1; i >= 0; i--) {
@@ -82,16 +84,37 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
                     Log.Trace("Checking PlayerSpeak event, explicit target: {Target}", ps.TargetCharacterId ?? "none");
                     var npcId = ps.TargetCharacterId ?? await DetermineTargetNpcAsync(rpc, ps);
                     if (npcId != null) {
-                        return (npcId, ps.GameTime);
+                        return (npcId, ps.PlayerCharacterId, ps.GameTime);
                     }
 
                     break;
                 case StoryEvent.NpcSpeak ns when ns.TargetCharacterId != null && !playerIds.Contains(ns.TargetCharacterId):
                     Log.Trace("Found NpcSpeak targeting non-player: {Target}", ns.TargetCharacterId);
-                    return (ns.TargetCharacterId, ns.GameTime);
+                    return (ns.TargetCharacterId, ns.NpcCharacterId, ns.GameTime);
             }
         }
-        return (null, null);
+        return (null, null, null);
+    }
+
+    /// <summary>Resolves a character id to name/race/sex/class, whether it's the player or an NPC.</summary>
+    private async Task<NpcInfo?> GetCharacterInfoAsync(string characterId) {
+        if (_worldState.IsPlayer(characterId)) {
+            try {
+                var response = await _rpc.CallAsync(
+                    nameof(ServerToModMessageType.GetPlayerInfo),
+                    JsonExtensions.SerializeToObject(
+                        new GetPlayerInfoRequestPayload(characterId),
+                        PayloadJsonContext.Default.GetPlayerInfoRequestPayload));
+                var payload = response.Json?.DeserializeSafe(PayloadJsonContext.Default.GetPlayerInfoResponsePayload);
+                return payload == null ? null : new NpcInfo(payload.ObjectId, payload.Name, payload.Race, payload.Sex, payload.Class);
+            }
+            catch (Exception ex) {
+                Log.Warn("Failed to query player info for {CharacterId}: {Error}", characterId, ex.Message);
+                return null;
+            }
+        }
+
+        return await _npcRepo.GetNpcInfoAsync(characterId);
     }
 
     private async Task<string?> DetermineTargetNpcAsync(IRpcChannel rpc, StoryEvent.PlayerSpeak evt) {
@@ -205,7 +228,7 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
     }
 
     private async Task<string?> GenerateNpcResponseAsync(
-        NpcInfo npc,
+        NpcInfo npc, NpcInfo? interlocutor,
         List<StoryEvent> history, List<StoryEventSummary> summaries) {
         Log.Trace("Generating response for NPC {NpcName} with {HistoryCount} history events and {SummaryCount} summaries",
             npc.Name, history.Count, summaries.Count);
@@ -216,6 +239,9 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
         var classLine = npc.Class != null ? $" ({npc.Class})" : "";
         var locationLine = _worldState.CurrentCellName != null
             ? $"\nCurrent location: {_worldState.CurrentCellName}."
+            : "";
+        var interlocutorLine = interlocutor != null
+            ? $"\nYou are speaking with {interlocutor.Name}, a {interlocutor.Race} ({interlocutor.Sex}){(interlocutor.Class != null ? $", a {interlocutor.Class}" : "")}."
             : "";
         var healthLine = "";
         if (liveState != null) {
@@ -234,9 +260,9 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
         }
 
         var systemPrompt = $"""
-            You are {npc.Name}, a {npc.Race} ({npc.Sex}){classLine}, living in Morrowind.{locationLine}{healthLine}
+            You are {npc.Name}, a {npc.Race} ({npc.Sex}){classLine}, living in Morrowind.{locationLine}{healthLine}{interlocutorLine}
             Stay in character. Speak briefly and naturally. Do not mention that you are an AI. Always respond in the English language.
-            Let your class, health, and location subtly color your speech and attitude where it's natural to do so -- don't recite these facts, just be shaped by them.
+            Let your class, health, location, and who you're speaking with subtly color your speech and attitude where it's natural to do so (Morrowind's races and cultures have real tensions and affinities) -- don't recite these facts, just be shaped by them.
 
             You will be told what other characters say and do. Reply only with your own speech.
 
