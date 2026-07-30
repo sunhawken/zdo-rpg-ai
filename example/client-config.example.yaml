@@ -38,3 +38,10 @@ voiceCapture:
     key: Y
     subMode: hold
     releaseDelayMs: 400
+  # Hot mic: continuous voice-activity detection instead of push-to-talk. When enabled, speech
+  # starts/stops the mic on its own -- pushToTalk above stays inert while this is on.
+  hotMic:
+    enabled: false
+    energyThreshold: 600
+    minSpeechMs: 250
+    silenceTimeoutMs: 1000

@@ -19,6 +19,13 @@ public class EmulatorSession {
     }
 
     public async Task RunAsync(CancellationToken ct) {
+        // The client's own websocket connect to the server (a fresh ClientWebSocket.ConnectAsync
+        // against "localhost") reliably takes ~2s longer than this mod-emulator connection does,
+        // and messages sent before the server side is up just get silently dropped (real gameplay
+        // never hits this -- the launcher starts server+client long before the game connects).
+        // Give it a moment so the one-shot initial burst below actually lands.
+        await Task.Delay(3000, ct);
+
         // Send initial game state to client
         SendPlayerAdded();
         SendCellChange();
@@ -76,6 +83,9 @@ public class EmulatorSession {
                 break;
             case nameof(ServerToModMessageType.GetPlayerInfo):
                 HandleGetPlayerInfo(msg);
+                break;
+            case nameof(ServerToModMessageType.GetLiveState):
+                HandleGetLiveState(msg);
                 break;
             case nameof(ServerToModMessageType.GetCharactersWhoHear):
                 HandleGetCharactersWhoHear(msg);
@@ -145,6 +155,26 @@ public class EmulatorSession {
         var payload = JsonExtensions.SerializeToObject(info, PayloadJsonContext.Default.GetPlayerInfoResponsePayload);
         _rpc.Respond(nameof(ServerToModMessageType.GetPlayerInfo), msg.Id, payload);
         Log.Info("GetPlayerInfo: {Name}", info.Name);
+    }
+
+    private void HandleGetLiveState(Message msg) {
+        var req = msg.Json?.DeserializeSafe(PayloadJsonContext.Default.GetLiveStateRequestPayload);
+        if (req == null) return;
+
+        GetLiveStateResponsePayload response;
+        if (req.CharacterId == SeydaNeenWorld.PlayerId) {
+            response = new GetLiveStateResponsePayload(false, 100, 100, SeydaNeenWorld.CellName);
+        }
+        else {
+            var npc = SeydaNeenWorld.FindNpc(req.CharacterId);
+            response = npc != null
+                ? SeydaNeenWorld.ToLiveState(npc)
+                : new GetLiveStateResponsePayload(true, 0, 0, null);
+        }
+
+        var payload = JsonExtensions.SerializeToObject(response, PayloadJsonContext.Default.GetLiveStateResponsePayload);
+        _rpc.Respond(nameof(ServerToModMessageType.GetLiveState), msg.Id, payload);
+        Log.Info("GetLiveState ({CharacterId}): dead={Dead} hp={Cur}/{Max}", req.CharacterId, response.IsDead, response.HealthCurrent, response.HealthMax);
     }
 
     private void HandleGetCharactersWhoHear(Message msg) {

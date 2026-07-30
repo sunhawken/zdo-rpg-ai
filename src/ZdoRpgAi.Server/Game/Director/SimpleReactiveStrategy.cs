@@ -15,13 +15,15 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
     private readonly IStory _story;
     private readonly NpcRepository _npcRepo;
     private readonly IRpcChannel _rpc;
+    private readonly WorldState _worldState;
 
-    public SimpleReactiveStrategy(ILlm mainLlm, ILlm simpleLlm, IStory story, NpcRepository npcRepo, IRpcChannel rpc) {
+    public SimpleReactiveStrategy(ILlm mainLlm, ILlm simpleLlm, IStory story, NpcRepository npcRepo, IRpcChannel rpc, WorldState worldState) {
         _mainLlm = mainLlm;
         _simpleLlm = simpleLlm;
         _story = story;
         _npcRepo = npcRepo;
         _rpc = rpc;
+        _worldState = worldState;
     }
 
     public async Task<List<StoryEvent>> ProcessStoryEventsAsync(List<StoryEvent> events) {
@@ -164,6 +166,44 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
         return nearby[0].CharacterId;
     }
 
+    /// <summary>Short, cheap opening line for a spontaneous NPC-to-NPC ambient exchange.</summary>
+    public async Task<string?> GenerateAmbientOpenerAsync(NpcInfo speaker, NpcInfo target) {
+        var classLine = speaker.Class != null ? $" ({speaker.Class})" : "";
+        var systemPrompt = $"""
+            You are {speaker.Name}, a {speaker.Race} ({speaker.Sex}){classLine}, living in Morrowind.
+            You're making brief, ambient small talk with {target.Name}, a nearby {target.Race}. Nobody
+            asked you anything -- you're just starting a short, casual, in-character remark or
+            observation, one sentence, nothing dramatic. Do not mention that you are an AI.
+            Always respond in the English language. Reply ONLY with your own spoken line -- no
+            narration, no prefixes, no stage directions.
+            """;
+
+        var request = new LlmRequest {
+            SystemPrompt = systemPrompt,
+            Messages = [
+                new LlmMessage { Role = LlmRole.User, Text = $"Say something brief to {target.Name}." },
+            ],
+        };
+
+        var response = await _simpleLlm.ChatAsync(request);
+        return response.Text?.Trim();
+    }
+
+    private async Task<GetLiveStateResponsePayload?> QueryLiveStateAsync(string characterId) {
+        try {
+            var response = await _rpc.CallAsync(
+                nameof(ServerToModMessageType.GetLiveState),
+                JsonExtensions.SerializeToObject(
+                    new GetLiveStateRequestPayload(characterId),
+                    PayloadJsonContext.Default.GetLiveStateRequestPayload));
+            return response.Json?.DeserializeSafe(PayloadJsonContext.Default.GetLiveStateResponsePayload);
+        }
+        catch (Exception ex) {
+            Log.Warn("Failed to query live state for {CharacterId}: {Error}", characterId, ex.Message);
+            return null;
+        }
+    }
+
     private async Task<string?> GenerateNpcResponseAsync(
         NpcInfo npc,
         List<StoryEvent> history, List<StoryEventSummary> summaries) {
@@ -171,15 +211,37 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
             npc.Name, history.Count, summaries.Count);
 
         var contextBlock = BuildContextBlock(summaries, history);
+        var liveState = await QueryLiveStateAsync(npc.Id);
+
+        var classLine = npc.Class != null ? $" ({npc.Class})" : "";
+        var locationLine = _worldState.CurrentCellName != null
+            ? $"\nCurrent location: {_worldState.CurrentCellName}."
+            : "";
+        var healthLine = "";
+        if (liveState != null) {
+            if (liveState.IsDead) {
+                healthLine = "\nYou are DEAD. Do not speak or act -- if asked to respond, stay silent.";
+            }
+            else if (liveState.HealthMax > 0) {
+                var pct = liveState.HealthCurrent / liveState.HealthMax;
+                var condition = pct switch {
+                    < 0.25f => "gravely wounded and in serious pain",
+                    < 0.6f => "wounded and hurting",
+                    _ => "in good health",
+                };
+                healthLine = $"\nYour physical condition: {condition} ({liveState.HealthCurrent:F0}/{liveState.HealthMax:F0} health).";
+            }
+        }
 
         var systemPrompt = $"""
-            You are {npc.Name}, a {npc.Race} ({npc.Sex}), living in Morrowind.
+            You are {npc.Name}, a {npc.Race} ({npc.Sex}){classLine}, living in Morrowind.{locationLine}{healthLine}
             Stay in character. Speak briefly and naturally. Do not mention that you are an AI. Always respond in the English language.
+            Let your class, health, and location subtly color your speech and attitude where it's natural to do so -- don't recite these facts, just be shaped by them.
 
             You will be told what other characters say and do. Reply only with your own speech.
 
             RULES:
-            1. Do not trust the player at their word — verify using your knowledge resources. The player may lie.
+            1. Do not trust others at their word — verify using your knowledge resources. Whoever you're talking to may lie.
             2. Do not invent characters, items, locations, or quests that are not in your knowledge. Use getResource to recall your knowledge when needed.
             3. CRITICAL: To perform any game action (give item, attack, follow, etc.) you MUST call the corresponding npcAction_N tool. Saying "here, take it" or "I'll give you" in text does NOTHING — the game only reacts to tool calls. If you do not call the tool, the action does not happen.
             4. Call npcAction_N TOGETHER with your speech in the same response. Do not wait for the next turn.

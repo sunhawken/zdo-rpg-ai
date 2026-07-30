@@ -40,7 +40,7 @@ public class ServerApplication : IDisposable {
 
     public async Task RunAsync(CancellationToken ct) {
         Log.Info("Server started");
-        await _httpServer.StartAsync(ct);
+        await Task.WhenAll(_httpServer.StartAsync(ct), _game.RunAsync(ct));
         Log.Info("Server stopped");
     }
 

@@ -16,12 +16,31 @@ public class PushToTalkConfig {
     public int ReleaseDelayMs { get; set; } = 400;
 }
 
+/// <summary>
+/// "Hot mic": continuous energy-based voice activity detection instead of push-to-talk. When
+/// enabled it takes over activation entirely -- the hotkey/VR-touch trigger paths still update
+/// _isActive under the hood the same way, but nothing needs to press anything; sustained volume
+/// above Threshold starts an utterance, sustained silence after SilenceTimeoutMs ends it.
+/// </summary>
+public class HotMicConfig {
+    public bool Enabled { get; set; } = false;
+    // RMS amplitude (0-32767 for 16-bit PCM) above which a frame counts as "speech".
+    // Typical quiet-room noise floor is under 100; normal speaking voice is usually 1000+.
+    public int EnergyThreshold { get; set; } = 600;
+    // Sustained loud time required before an utterance is considered to have started, so a single
+    // cough/click/knock doesn't fire off a transcription.
+    public int MinSpeechMs { get; set; } = 250;
+    // Sustained quiet time required before an utterance is considered finished.
+    public int SilenceTimeoutMs { get; set; } = 1000;
+}
+
 public class VoiceCaptureServiceConfig {
     public bool Enabled { get; set; } = false;
     public int SampleRate { get; set; } = 16000;
     public int FrameSizeMs { get; set; } = 20;
     public int DeviceIndex { get; set; } = -1;
     public PushToTalkConfig PushToTalk { get; set; } = new();
+    public HotMicConfig HotMic { get; set; } = new();
 
     public string PttKey => PushToTalk.Key;
     public PttSubMode PttSubMode => PushToTalk.SubMode;
@@ -91,6 +110,10 @@ public class VoiceCaptureService : IDisposable {
     }
 
     private void HandleFrameCaptured(ReadOnlyMemory<byte> frame) {
+        if (_config.HotMic.Enabled) {
+            HandleHotMicFrame(frame);
+        }
+
         // Only enqueue audio when active
         if (!_isActive) {
             return;
@@ -103,6 +126,57 @@ public class VoiceCaptureService : IDisposable {
 
         var copy = frame.ToArray();
         _audioChannel.Writer.TryWrite(copy);
+    }
+
+    // --- Hot mic (continuous VAD-based activation) ---
+
+    private int _hotMicLoudMs;
+    private int _hotMicQuietMs;
+
+    private void HandleHotMicFrame(ReadOnlyMemory<byte> frame) {
+        var isLoud = ComputeRmsAmplitude(frame.Span) >= _config.HotMic.EnergyThreshold;
+        var frameMs = _config.FrameSizeMs;
+
+        if (!_isActive) {
+            _hotMicQuietMs = 0;
+            if (isLoud) {
+                _hotMicLoudMs += frameMs;
+                if (_hotMicLoudMs >= _config.HotMic.MinSpeechMs) {
+                    _hotMicLoudMs = 0;
+                    Activate();
+                }
+            }
+            else {
+                _hotMicLoudMs = 0;
+            }
+        }
+        else {
+            if (isLoud) {
+                _hotMicQuietMs = 0;
+            }
+            else {
+                _hotMicQuietMs += frameMs;
+                if (_hotMicQuietMs >= _config.HotMic.SilenceTimeoutMs) {
+                    _hotMicQuietMs = 0;
+                    Deactivate();
+                }
+            }
+        }
+    }
+
+    private static double ComputeRmsAmplitude(ReadOnlySpan<byte> pcm16Mono) {
+        if (pcm16Mono.Length < 2) {
+            return 0;
+        }
+
+        long sumSquares = 0;
+        var sampleCount = pcm16Mono.Length / 2;
+        for (var i = 0; i < sampleCount; i++) {
+            var sample = (short)(pcm16Mono[i * 2] | (pcm16Mono[i * 2 + 1] << 8));
+            sumSquares += (long)sample * sample;
+        }
+
+        return Math.Sqrt((double)sumSquares / sampleCount);
     }
 
     private async Task DrainAudioChannelAsync(CancellationToken ct) {

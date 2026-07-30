@@ -11,10 +11,12 @@ public class StoryComposer {
 
     private readonly Story _story;
     private readonly DirectorHelper _directorHelper;
+    private readonly WorldState _worldState;
 
-    public StoryComposer(Story story, DirectorHelper directorHelper, IRpcChannel rpc) {
+    public StoryComposer(Story story, DirectorHelper directorHelper, WorldState worldState, IRpcChannel rpc) {
         _story = story;
         _directorHelper = directorHelper;
+        _worldState = worldState;
         rpc.MessageReceived += OnMessageReceived;
     }
 
@@ -51,6 +53,24 @@ public class StoryComposer {
                     }
 
                     OnPlayerSpeak(payload.PlayerId, payload.TargetCharacterId, payload.GameTime, payload.Text);
+                    break;
+                }
+            case nameof(ModToServerMessageType.CellChange): {
+                    var payload = msg.Json?.DeserializeSafe(PayloadJsonContext.Default.CellChangePayload);
+                    if (payload == null) {
+                        return;
+                    }
+
+                    _worldState.SetCurrentCell(payload.CellName);
+                    break;
+                }
+            case nameof(ModToServerMessageType.PlayerAdded): {
+                    var payload = msg.Json?.DeserializeSafe(PayloadJsonContext.Default.PlayerAddedPayload);
+                    if (payload == null) {
+                        return;
+                    }
+
+                    _worldState.AddPlayerId(payload.PlayerId);
                     break;
                 }
         }

@@ -22,6 +22,15 @@ public class ServerConfig {
 public class DirectorSection {
     public int CompactThreshold { get; set; } = 30;
     public int CompactKeepRecent { get; set; } = 10;
+    public AmbientDialogueSection AmbientDialogue { get; set; } = new();
+}
+
+public class AmbientDialogueSection {
+    public bool Enabled { get; set; } = true;
+    // How often the scheduler rolls the dice on starting an ambient exchange.
+    public int CheckIntervalSec { get; set; } = 45;
+    // Chance per check that an exchange actually starts, given 2+ NPCs are near the player.
+    public double ChancePerCheck { get; set; } = 0.15;
 }
 
 public class DatabaseSection {

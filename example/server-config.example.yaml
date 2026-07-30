@@ -65,6 +65,11 @@ stt:
 director:
   compactThreshold: 30
   compactKeepRecent: 10
+  # Spontaneous NPC-to-NPC ambient chatter between NPCs currently near the player.
+  ambientDialogue:
+    enabled: true
+    checkIntervalSec: 45
+    chancePerCheck: 0.15
 
 # LLM (dummy | gemini | openai)
 llm:

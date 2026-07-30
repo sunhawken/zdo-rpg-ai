@@ -13,6 +13,8 @@ namespace ZdoRpgAi.Protocol.Messages;
 [JsonSerializable(typeof(GetNpcInfoResponsePayload))]
 [JsonSerializable(typeof(GetPlayerInfoRequestPayload))]
 [JsonSerializable(typeof(GetPlayerInfoResponsePayload))]
+[JsonSerializable(typeof(GetLiveStateRequestPayload))]
+[JsonSerializable(typeof(GetLiveStateResponsePayload))]
 [JsonSerializable(typeof(SpawnOnGroundInFrontOfCharacterPayload))]
 [JsonSerializable(typeof(PlaySound3dOnCharacterPayload))]
 [JsonSerializable(typeof(NpcStartFollowCharacterPayload))]

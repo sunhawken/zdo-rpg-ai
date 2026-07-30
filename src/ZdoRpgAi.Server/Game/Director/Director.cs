@@ -11,29 +11,47 @@ namespace ZdoRpgAi.Server.Game.Director;
 public class Director {
     private static readonly ILog Log = Logger.Get<Director>();
 
+    // Hard cap on unprompted NPC-to-NPC exchanges (A speaks to B, B replies to A, stop) so a
+    // chain can't run away on its own -- resets whenever the player speaks.
+    private const int MaxAmbientChainDepth = 2;
+
     private readonly Story.Story _story;
     private readonly DirectorHelper _directorHelper;
     private readonly NpcSpeechGenerator _npcSpeechGenerator;
     private readonly SimpleReactiveStrategy _simpleReactive;
     private readonly IRpcChannel _rpc;
     private readonly NpcRepository _npcRepo;
+    private readonly WorldState _worldState;
     private readonly object _bufferLock = new();
     private readonly List<StoryEvent> _buffer = [];
     private bool _processing;
     private int _playerInterruptionIteration = 0;
+    private int _ambientChainDepth = 0;
 
-    public Director(Story.Story story, DirectorHelper directorHelper, NpcSpeechGenerator npcSpeechGenerator, IRpcChannel rpc, ILlm mainLlm, ILlm simpleLlm, NpcRepository npcRepo) {
+    public Director(Story.Story story, DirectorHelper directorHelper, NpcSpeechGenerator npcSpeechGenerator, IRpcChannel rpc, ILlm mainLlm, ILlm simpleLlm, NpcRepository npcRepo, WorldState worldState) {
         _story = story;
         _directorHelper = directorHelper;
         _npcSpeechGenerator = npcSpeechGenerator;
         _rpc = rpc;
         _npcRepo = npcRepo;
-        _simpleReactive = new SimpleReactiveStrategy(mainLlm, simpleLlm, story, npcRepo, rpc);
+        _worldState = worldState;
+        _simpleReactive = new SimpleReactiveStrategy(mainLlm, simpleLlm, story, npcRepo, rpc, worldState);
         story.EventRegistered += OnStoryEventRegistered;
     }
 
     private void OnStoryEventRegistered(StoryEvent evt) {
         Log.Debug("OnStoryEventRegistered");
+
+        if (evt is StoryEvent.PlayerSpeak) {
+            // The player has started a new utterance -- bump the iteration so anything currently
+            // sitting in WaitUnlessInterruptedAsync (holding the drain loop open for a previous
+            // NPC's speech-playback duration) bails out immediately instead of making the player
+            // wait behind audio that already started playing. Buffering itself was already
+            // correct (events queue up fine while _processing is true); this counter existed for
+            // exactly this purpose but was never incremented anywhere.
+            Interlocked.Increment(ref _playerInterruptionIteration);
+            _ambientChainDepth = 0;
+        }
 
         lock (_bufferLock) {
             _buffer.Add(evt);
@@ -47,6 +65,58 @@ public class Director {
 
         Log.Trace("Starting drain for event {EventType}", evt.GetType().Name);
         _ = DrainBufferAsync();
+    }
+
+    /// <summary>
+    /// Entry point for the ambient dialogue scheduler: attempts to start a spontaneous NPC-to-NPC
+    /// exchange. Skips (rather than queues) if the director is already busy -- this is flavor,
+    /// not something worth delaying real player/NPC activity for, and the scheduler will just try
+    /// again on its next tick. Reuses the same buffer/_processing gate as every other event path
+    /// so the two never run concurrently: sets _processing itself (mirroring what
+    /// OnStoryEventRegistered does), registers+voices the opening line directly, then drains
+    /// whatever queued up while that was happening -- in particular the target's own reply, whose
+    /// registration will have found _processing already true and simply buffered itself instead
+    /// of recursing, exactly like any other buffered event.
+    /// </summary>
+    public async Task TryStartAmbientDialogueAsync(string speakerId, string targetId) {
+        lock (_bufferLock) {
+            if (_processing) {
+                Log.Trace("Skipping ambient dialogue attempt, director busy");
+                return;
+            }
+            _processing = true;
+        }
+
+        try {
+            var speakerInfo = await _npcRepo.GetNpcInfoAsync(speakerId);
+            var targetInfo = await _npcRepo.GetNpcInfoAsync(targetId);
+            if (speakerInfo == null || targetInfo == null) {
+                Log.Trace("Ambient dialogue: missing info for {Speaker} or {Target}", speakerId, targetId);
+                return;
+            }
+
+            var line = await _simpleReactive.GenerateAmbientOpenerAsync(speakerInfo, targetInfo);
+            if (string.IsNullOrWhiteSpace(line)) {
+                Log.Trace("Ambient dialogue: empty opener from {Speaker}", speakerId);
+                return;
+            }
+
+            _ambientChainDepth = 0;
+            var evt = StoryEvent.Create(new StoryEvent.NpcSpeak {
+                NpcCharacterId = speakerId,
+                TargetCharacterId = targetId,
+                GameTime = StoryEvent.GetRealTime(),
+                Text = line,
+            });
+            Log.Info("Ambient dialogue: {Speaker} -> {Target}: {Text}", speakerId, targetId, line);
+            await RegisterAndPublishAsync([evt]);
+        }
+        catch (Exception ex) {
+            Log.Error("TryStartAmbientDialogueAsync failed: {Error}", ex.Message);
+        }
+        finally {
+            await DrainBufferAsync();
+        }
     }
 
     private async Task DrainBufferAsync() {
@@ -162,10 +232,20 @@ public class Director {
     }
 
     private IDirectorStrategy? DetermineStrategy(List<StoryEvent> events) {
-        var lastEventType = events.Last().GetType().Name;
-        Log.Trace("Determining strategy for last event type {EventType}", lastEventType);
+        var last = events.Last();
+        Log.Trace("Determining strategy for last event type {EventType}", last.GetType().Name);
 
-        if (events.Last() is StoryEvent.PlayerSpeak) {
+        if (last is StoryEvent.PlayerSpeak) {
+            return _simpleReactive;
+        }
+
+        // An NPC speaking to another NPC (not the player) is an ambient exchange -- let it
+        // continue for a couple of turns so the target can react, then stop.
+        if (last is StoryEvent.NpcSpeak { TargetCharacterId: not null } ns
+            && !_worldState.IsPlayer(ns.TargetCharacterId)
+            && _ambientChainDepth < MaxAmbientChainDepth) {
+            _ambientChainDepth++;
+            Log.Trace("Continuing ambient NPC-NPC exchange (depth {Depth}/{Max})", _ambientChainDepth, MaxAmbientChainDepth);
             return _simpleReactive;
         }
 

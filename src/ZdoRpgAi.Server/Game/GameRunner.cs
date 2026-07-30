@@ -25,6 +25,7 @@ public class GameRunner {
     private readonly StoryComposer _storyComposer;
     private readonly NpcRepository _npcRepo;
     private readonly Director.Director _director;
+    private readonly Director.AmbientDialogueScheduler _ambientScheduler;
 
     public GameRunner(
         IMainRepository mainRepo, ISaveGameRepository saveGameRepo,
@@ -39,14 +40,18 @@ public class GameRunner {
 
         var summaryBuilder = new StorySummaryBuilder(simpleLlm);
         var story = new Story.Story(saveGameRepo, summaryBuilder, directorConfig);
+        var worldState = new WorldState();
         _playerHandler = new PlayerMessageHandler(stt, rpc);
         var directorHelper = new Director.DirectorHelper(rpc);
-        _storyComposer = new StoryComposer(story, directorHelper, rpc);
+        _storyComposer = new StoryComposer(story, directorHelper, worldState, rpc);
         _npcRepo = new NpcRepository(mainRepo, saveGameRepo, rpc);
         var speedAdjuster = new Mp3SpeedAdjuster(mp3SpeedConfig);
         var npcSpeechGenerator = new NpcSpeechGenerator(tts, speedAdjuster);
-        _director = new Director.Director(story, directorHelper, npcSpeechGenerator, rpc, mainLlm, simpleLlm, _npcRepo);
+        _director = new Director.Director(story, directorHelper, npcSpeechGenerator, rpc, mainLlm, simpleLlm, _npcRepo, worldState);
+        _ambientScheduler = new Director.AmbientDialogueScheduler(_director, directorHelper, worldState, directorConfig.AmbientDialogue);
 
         _playerHandler.PlayerSpoke += _storyComposer.OnPlayerSpeak;
     }
+
+    public Task RunAsync(CancellationToken ct) => _ambientScheduler.RunAsync(ct);
 }

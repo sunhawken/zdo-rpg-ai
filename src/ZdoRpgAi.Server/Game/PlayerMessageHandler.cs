@@ -12,7 +12,11 @@ public class PlayerMessageHandler {
     private readonly ISpeechToText _stt;
     private readonly IRpcChannel _rpc;
     private SpeakingSession? _activeSession;
-    private SpeakingSession? _finishingSession;
+    // FIFO, not a single field: if the player starts a new utterance before the previous one's
+    // STT call has returned (now expected, since Director no longer blocks the player on a prior
+    // NPC's response), more than one transcription can be in flight at once. Final results should
+    // arrive in the order they were requested.
+    private readonly Queue<SpeakingSession> _finishingSessions = new();
 
     public event Action<string, string?, string, string>? PlayerSpoke;
 
@@ -90,7 +94,7 @@ public class PlayerMessageHandler {
         }
         else {
             Log.Info("Player {PlayerId} stopped speaking", payload.PlayerId);
-            _finishingSession = session;
+            _finishingSessions.Enqueue(session);
             _stt.Finish();
         }
     }
@@ -111,9 +115,18 @@ public class PlayerMessageHandler {
     }
 
     private void OnFinalResultReceived(string text) {
-        var session = _finishingSession ?? _activeSession;
-        _finishingSession = null;
-        _activeSession = null;
+        SpeakingSession? session;
+        if (_finishingSessions.Count > 0) {
+            session = _finishingSessions.Dequeue();
+        }
+        else {
+            // Defensive fallback for a final result arriving without a matching StopSpeak --
+            // _activeSession only belongs here (and only gets cleared here) in that case, since
+            // the normal flow already clears it synchronously in HandlePlayerStopSpeak and a new
+            // utterance may legitimately be active by the time this fires.
+            session = _activeSession;
+            _activeSession = null;
+        }
 
         if (session == null) {
             Log.Warn("Received final STT result but no active session");
