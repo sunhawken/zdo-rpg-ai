@@ -165,11 +165,11 @@ public class LocalDatabaseSaveGameRepository : ISaveGameRepository, IDisposable 
             return null;
         }
 
-        return new RawNpcInfo(npcId, data.Name, data.Race, data.Sex, data.Class);
+        return new RawNpcInfo(npcId, data.Name, data.Race, data.Sex, data.Class, data.Faction, data.FactionRank);
     }
 
     public void SaveNpcInfo(RawNpcInfo info) {
-        var json = JsonSerializer.Serialize(new NpcDataJson(info.Name, info.Race, info.Sex, info.Class), NpcDataJsonContext.Default.NpcDataJson);
+        var json = JsonSerializer.Serialize(new NpcDataJson(info.Name, info.Race, info.Sex, info.Class, info.Faction, info.FactionRank), NpcDataJsonContext.Default.NpcDataJson);
         using var cmd = _db.Connection.CreateCommand();
         cmd.CommandText = """
             INSERT INTO npc_new (id, dataJson) VALUES ($id, $data)
@@ -185,7 +185,7 @@ public class LocalDatabaseSaveGameRepository : ISaveGameRepository, IDisposable 
     }
 }
 
-internal record NpcDataJson(string Name, string Race, string Sex, string? Class = null);
+internal record NpcDataJson(string Name, string Race, string Sex, string? Class = null, string? Faction = null, string? FactionRank = null);
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(NpcDataJson))]

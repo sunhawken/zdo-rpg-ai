@@ -14,4 +14,4 @@ public interface ISaveGameRepository : IDisposable {
 
 public record RawStoryEvent(long Id, string GameTime, string RealTime, string Type, string DataJson);
 public record RawStoryEventSummary(long Id, string Summary, string RealTime);
-public record RawNpcInfo(string Id, string Name, string Race, string Sex, string? Class = null);
+public record RawNpcInfo(string Id, string Name, string Race, string Sex, string? Class = null, string? Faction = null, string? FactionRank = null);

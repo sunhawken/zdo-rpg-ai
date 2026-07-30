@@ -106,7 +106,7 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
                         new GetPlayerInfoRequestPayload(characterId),
                         PayloadJsonContext.Default.GetPlayerInfoRequestPayload));
                 var payload = response.Json?.DeserializeSafe(PayloadJsonContext.Default.GetPlayerInfoResponsePayload);
-                return payload == null ? null : new NpcInfo(payload.ObjectId, payload.Name, payload.Race, payload.Sex, payload.Class);
+                return payload == null ? null : new NpcInfo(payload.ObjectId, payload.Name, payload.Race, payload.Sex, payload.Class, payload.Faction, payload.FactionRank);
             }
             catch (Exception ex) {
                 Log.Warn("Failed to query player info for {CharacterId}: {Error}", characterId, ex.Message);
@@ -192,11 +192,15 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
     /// <summary>Short, cheap opening line for a spontaneous NPC-to-NPC ambient exchange.</summary>
     public async Task<string?> GenerateAmbientOpenerAsync(NpcInfo speaker, NpcInfo target) {
         var classLine = speaker.Class != null ? $" ({speaker.Class})" : "";
+        var speakerFactionLine = speaker.Faction != null
+            ? $" You belong to {speaker.Faction}{(speaker.FactionRank != null ? $", holding the rank of {speaker.FactionRank}" : "")}."
+            : "";
         var systemPrompt = $"""
-            You are {speaker.Name}, a {speaker.Race} ({speaker.Sex}){classLine}, living in Morrowind.
-            You're making brief, ambient small talk with {target.Name}, a nearby {target.Race}. Nobody
+            You are {speaker.Name}, a {speaker.Race} ({speaker.Sex}){classLine}, living in Morrowind.{speakerFactionLine}
+            You're making brief, ambient small talk with {target.Name}, a nearby {target.Race}.{FormatInterlocutorFaction(target)} Nobody
             asked you anything -- you're just starting a short, casual, in-character remark or
-            observation, one sentence, nothing dramatic. Do not mention that you are an AI.
+            observation, one sentence, nothing dramatic. If your factions have real tension or rivalry,
+            let that color the remark subtly. Do not mention that you are an AI.
             Always respond in the English language. Reply ONLY with your own spoken line -- no
             narration, no prefixes, no stage directions.
             """;
@@ -237,11 +241,14 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
         var liveState = await QueryLiveStateAsync(npc.Id);
 
         var classLine = npc.Class != null ? $" ({npc.Class})" : "";
+        var factionLine = npc.Faction != null
+            ? $"\nYou belong to {npc.Faction}{(npc.FactionRank != null ? $", holding the rank of {npc.FactionRank}" : "")}."
+            : "";
         var locationLine = _worldState.CurrentCellName != null
             ? $"\nCurrent location: {_worldState.CurrentCellName}."
             : "";
         var interlocutorLine = interlocutor != null
-            ? $"\nYou are speaking with {interlocutor.Name}, a {interlocutor.Race} ({interlocutor.Sex}){(interlocutor.Class != null ? $", a {interlocutor.Class}" : "")}."
+            ? $"\nYou are speaking with {interlocutor.Name}, a {interlocutor.Race} ({interlocutor.Sex}){(interlocutor.Class != null ? $", a {interlocutor.Class}" : "")}.{FormatInterlocutorFaction(interlocutor)}"
             : "";
         var healthLine = "";
         if (liveState != null) {
@@ -260,9 +267,9 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
         }
 
         var systemPrompt = $"""
-            You are {npc.Name}, a {npc.Race} ({npc.Sex}){classLine}, living in Morrowind.{locationLine}{healthLine}{interlocutorLine}
+            You are {npc.Name}, a {npc.Race} ({npc.Sex}){classLine}, living in Morrowind.{factionLine}{locationLine}{healthLine}{interlocutorLine}
             Stay in character. Speak briefly and naturally. Do not mention that you are an AI. Always respond in the English language.
-            Let your class, health, location, and who you're speaking with subtly color your speech and attitude where it's natural to do so (Morrowind's races and cultures have real tensions and affinities) -- don't recite these facts, just be shaped by them.
+            Let your class, faction, health, location, and who you're speaking with subtly color your speech and attitude where it's natural to do so (Morrowind's races, factions, and cultures have real rivalries and affinities -- Houses, guilds, and other factions do not always get along) -- don't recite these facts, just be shaped by them.
 
             You will be told what other characters say and do. Reply only with your own speech.
 
@@ -310,6 +317,11 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
         Log.Trace("Main LLM response length: {Length}", response.Text?.Length ?? 0);
         return response.Text?.Trim();
     }
+
+    private static string FormatInterlocutorFaction(NpcInfo interlocutor) =>
+        interlocutor.Faction != null
+            ? $" They belong to {interlocutor.Faction}{(interlocutor.FactionRank != null ? $", holding the rank of {interlocutor.FactionRank}" : "")}."
+            : "";
 
     private static string? BuildContextBlock(List<StoryEventSummary> summaries, List<StoryEvent> events) {
         var parts = new List<string>();

@@ -25,7 +25,7 @@ public class LocalDatabaseMainRepository : IMainRepository, IDisposable {
             return null;
         }
 
-        return new RawNpcInfo(npcId, data.Name, data.Race, data.Sex, data.Class);
+        return new RawNpcInfo(npcId, data.Name, data.Race, data.Sex, data.Class, data.Faction, data.FactionRank);
     }
 
     public void Dispose() {

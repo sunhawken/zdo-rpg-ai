@@ -30,9 +30,9 @@ public record SpeechRecognitionInProgressPayload(string PlayerId, string Text);
 public record SpeechRecognitionCompletePayload(string PlayerId, string Text);
 public record GetCharactersWhoHearRequestPayload(string CharacterId, float? MaxDistanceMeters = null);
 public record GetNpcInfoRequestPayload(string NpcId);
-public record GetNpcInfoResponsePayload(string ObjectId, string Name, string Race, string Sex, string? Class = null);
+public record GetNpcInfoResponsePayload(string ObjectId, string Name, string Race, string Sex, string? Class = null, string? Faction = null, string? FactionRank = null);
 public record GetPlayerInfoRequestPayload(string PlayerId);
-public record GetPlayerInfoResponsePayload(string ObjectId, string Name, string Race, string Sex, string? Class = null);
+public record GetPlayerInfoResponsePayload(string ObjectId, string Name, string Race, string Sex, string? Class = null, string? Faction = null, string? FactionRank = null);
 
 // Live, uncached dynamic state (health/dead/location) for a character -- deliberately kept
 // separate from GetNpcInfo/GetPlayerInfo, which cache their (static) results indefinitely.
