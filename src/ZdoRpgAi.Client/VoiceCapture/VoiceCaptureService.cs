@@ -23,6 +23,8 @@ public class PushToTalkConfig {
 /// above Threshold starts an utterance, sustained silence after SilenceTimeoutMs ends it.
 /// </summary>
 public class HotMicConfig {
+    // Whether hot mic is active at startup. Independent of ToggleKey -- you can start with this
+    // false and flip it on at runtime, or start true and turn it off.
     public bool Enabled { get; set; } = false;
     // RMS amplitude (0-32767 for 16-bit PCM) above which a frame counts as "speech".
     // Typical quiet-room noise floor is under 100; normal speaking voice is usually 1000+.
@@ -32,6 +34,9 @@ public class HotMicConfig {
     public int MinSpeechMs { get; set; } = 250;
     // Sustained quiet time required before an utterance is considered finished.
     public int SilenceTimeoutMs { get; set; } = 1000;
+    // Global hotkey that flips hot mic on/off at runtime, independent of the push-to-talk key.
+    // Null/empty disables the toggle entirely (hot mic then stays fixed at Enabled above).
+    public string? ToggleKey { get; set; } = "H";
 }
 
 public class VoiceCaptureServiceConfig {
@@ -55,6 +60,7 @@ public class VoiceCaptureService : IDisposable {
     private readonly VoiceCaptureServiceConfig _config;
     private readonly IMicrophoneListener _capture;
     private readonly IHotkeyListener? _hotkey;
+    private readonly IHotkeyListener? _hotMicToggleHotkey;
 
     private readonly System.Threading.Channels.Channel<byte[]> _audioChannel;
     private volatile bool _isActive;
@@ -66,11 +72,12 @@ public class VoiceCaptureService : IDisposable {
     public event Action? Deactivated;
     public Func<byte[], Task>? OnAudioBufferAsync { get; set; }
 
-    public VoiceCaptureService(VoiceCaptureServiceConfig config, IMicrophoneListener capture, IHotkeyListener? hotkey) {
+    public VoiceCaptureService(VoiceCaptureServiceConfig config, IMicrophoneListener capture, IHotkeyListener? hotkey, IHotkeyListener? hotMicToggleHotkey = null) {
         _config = config;
         _capture = capture;
         _capture.FrameCaptured += HandleFrameCaptured;
         _hotkey = hotkey;
+        _hotMicToggleHotkey = hotMicToggleHotkey;
 
         _audioChannel = System.Threading.Channels.Channel.CreateBounded<byte[]>(new BoundedChannelOptions(64) {
             FullMode = BoundedChannelFullMode.DropOldest,
@@ -82,15 +89,26 @@ public class VoiceCaptureService : IDisposable {
             _hotkey.KeyPressed += HandleKeyPressed;
             _hotkey.KeyReleased += HandleKeyReleased;
         }
+
+        if (_hotMicToggleHotkey != null) {
+            _hotMicToggleHotkey.KeyPressed += HandleHotMicTogglePressed;
+        }
     }
 
     public async Task RunAsync(CancellationToken ct) {
         Log.Info("Mic system starting: rate={Rate}Hz, frame={FrameMs}ms",
             _config.SampleRate, _config.FrameSizeMs);
+        if (_config.HotMic.Enabled) {
+            Log.Info("Hot mic starts ON");
+        }
 
         _capture.Start();
 
         var tasks = new List<Task>();
+
+        if (_hotMicToggleHotkey != null) {
+            tasks.Add(_hotMicToggleHotkey.RunAsync(ct));
+        }
 
         tasks.Add(DrainAudioChannelAsync(ct));
 
@@ -160,6 +178,22 @@ public class VoiceCaptureService : IDisposable {
                     _hotMicQuietMs = 0;
                     Deactivate();
                 }
+            }
+        }
+    }
+
+    private void HandleHotMicTogglePressed() {
+        _config.HotMic.Enabled = !_config.HotMic.Enabled;
+        Log.Info("Hot mic toggled {State}", _config.HotMic.Enabled ? "ON" : "OFF");
+
+        if (!_config.HotMic.Enabled) {
+            // Reset VAD accumulators and cut off cleanly if it was mid-utterance -- otherwise
+            // stray silence-timeout bookkeeping from the old session could carry over if hot mic
+            // gets flipped back on later.
+            _hotMicLoudMs = 0;
+            _hotMicQuietMs = 0;
+            if (_isActive) {
+                Deactivate();
             }
         }
     }
@@ -279,6 +313,7 @@ public class VoiceCaptureService : IDisposable {
     public void Dispose() {
         CancelPendingDeactivation();
         _hotkey?.Dispose();
+        _hotMicToggleHotkey?.Dispose();
         _capture.Dispose();
         _audioChannel.Writer.Complete();
     }

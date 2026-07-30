@@ -47,10 +47,15 @@ public static class ClientBootstrap {
         VoiceCaptureService? voiceCapture = null;
         if (config.VoiceCapture is { Enabled: true } vc) {
             var mic = new PortAudioMicrophoneListener(vc.SampleRate, vc.FrameSizeSamples, vc.DeviceIndex);
-            IHotkeyListener hotkey = OperatingSystem.IsWindows()
-                ? new WindowsHotkeyListener(vc.PttKey)
-                : new MacosHotkeyListener(vc.PttKey);
-            voiceCapture = new VoiceCaptureService(vc, mic, hotkey);
+            IHotkeyListener MakeHotkey(string key) => OperatingSystem.IsWindows()
+                ? new WindowsHotkeyListener(key)
+                : new MacosHotkeyListener(key);
+
+            var hotkey = MakeHotkey(vc.PttKey);
+            IHotkeyListener? hotMicToggleHotkey = !string.IsNullOrEmpty(vc.HotMic.ToggleKey)
+                ? MakeHotkey(vc.HotMic.ToggleKey)
+                : null;
+            voiceCapture = new VoiceCaptureService(vc, mic, hotkey, hotMicToggleHotkey);
         }
 
         var bridge = new ClientChannelBridge(server, modRpc);
