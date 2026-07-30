@@ -141,6 +141,10 @@ public class ClientApplication : IDisposable {
                 Log.Debug("VR push-to-talk released");
                 _voiceCapture?.DeactivateExternal();
                 return; // local trigger only -- Deactivate() already sends its own PlayerStopSpeak
+            case nameof(ModToClientMessageType.VrHotMicTogglePressed):
+                Log.Debug("VR hot mic toggle pressed");
+                _voiceCapture?.ToggleHotMicExternal();
+                return; // local trigger only, nothing to forward
         }
 
         _bridge.SendMessageToServer(msg);

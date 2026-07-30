@@ -18,6 +18,9 @@ public record StartSessionAckPayload(string SessionId);
 public enum ModToClientMessageType {
     VrPttPressed,
     VrPttReleased,
+    // Left thumb-rest touch (mirrors the right thumb-rest PTT trigger): tap to flip hot mic
+    // on/off, the VR equivalent of the keyboard hot-mic toggle hotkey.
+    VrHotMicTogglePressed,
 }
 
 // Client → Both (Mod + Server)

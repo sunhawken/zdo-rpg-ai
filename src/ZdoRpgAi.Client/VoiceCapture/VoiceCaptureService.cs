@@ -234,6 +234,9 @@ public class VoiceCaptureService : IDisposable {
 
     public void DeactivateExternal() => Deactivate();
 
+    /// <summary>Same toggle as the keyboard hot-mic hotkey, callable from an external trigger (a VR controller signal relayed from the mod).</summary>
+    public void ToggleHotMicExternal() => HandleHotMicTogglePressed();
+
     // --- Push-to-talk handlers ---
 
     private void HandleKeyPressed() {
