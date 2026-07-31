@@ -82,13 +82,19 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
             switch (events[i]) {
                 case StoryEvent.PlayerSpeak ps:
                     Log.Trace("Checking PlayerSpeak event, explicit target: {Target}", ps.TargetCharacterId ?? "none");
-                    var npcId = ps.TargetCharacterId ?? await DetermineTargetNpcAsync(rpc, ps);
+                    // Guard against the player somehow ending up as their own explicit target
+                    // (e.g. a raycast/target-detection glitch on the mod side) -- never let that
+                    // fall through as "the NPC responding".
+                    var explicitTarget = ps.TargetCharacterId != null && !_worldState.IsPlayer(ps.TargetCharacterId)
+                        ? ps.TargetCharacterId
+                        : null;
+                    var npcId = explicitTarget ?? await DetermineTargetNpcAsync(rpc, ps);
                     if (npcId != null) {
                         return (npcId, ps.PlayerCharacterId, ps.GameTime);
                     }
 
                     break;
-                case StoryEvent.NpcSpeak ns when ns.TargetCharacterId != null && !playerIds.Contains(ns.TargetCharacterId):
+                case StoryEvent.NpcSpeak ns when ns.TargetCharacterId != null && !playerIds.Contains(ns.TargetCharacterId) && !_worldState.IsPlayer(ns.TargetCharacterId):
                     Log.Trace("Found NpcSpeak targeting non-player: {Target}", ns.TargetCharacterId);
                     return (ns.TargetCharacterId, ns.NpcCharacterId, ns.GameTime);
             }
@@ -127,7 +133,7 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
 
         var payload = hearResponse.Json?.DeserializeSafe(PayloadJsonContext.Default.GetCharactersWhoHearResponsePayload);
         var nearby = payload?.Characters
-            .Where(c => c.CharacterId != evt.PlayerCharacterId)
+            .Where(c => c.CharacterId != evt.PlayerCharacterId && !_worldState.IsPlayer(c.CharacterId))
             .OrderBy(c => c.DistanceMeters)
             .ToArray() ?? [];
 

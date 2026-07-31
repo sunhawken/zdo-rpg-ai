@@ -65,6 +65,15 @@ public class WindowsHotkeyListener : IHotkeyListener {
             return upper[0];
         }
 
+        // Numpad digits (VK_NUMPAD0..VK_NUMPAD9 = 0x60..0x69) are distinct virtual-key codes from
+        // the top-row digits above -- "NUM1"/"NUMPAD1" means this, not "1".
+        if (upper.StartsWith("NUM") && !upper.StartsWith("NUMPAD")) {
+            upper = "NUMPAD" + upper[3..];
+        }
+        if (upper.StartsWith("NUMPAD") && upper.Length == 7 && upper[6] is >= '0' and <= '9') {
+            return 0x60 + (upper[6] - '0');
+        }
+
         return upper switch {
             "SPACE" => 0x20,
             "TAB" => 0x09,
@@ -91,7 +100,7 @@ public class WindowsHotkeyListener : IHotkeyListener {
             "MOUSE4" or "XBUTTON1" => 0x05,
             "MOUSE5" or "XBUTTON2" => 0x06,
             _ => throw new ArgumentException(
-                $"Unknown key '{keyName}'. Supported: A-Z, 0-9, F1-F12, Space, Tab, Escape, modifier keys, Mouse4/Mouse5")
+                $"Unknown key '{keyName}'. Supported: A-Z, 0-9, Num0-Num9, F1-F12, Space, Tab, Escape, modifier keys, Mouse4/Mouse5")
         };
     }
 

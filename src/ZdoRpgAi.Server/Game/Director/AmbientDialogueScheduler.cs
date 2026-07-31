@@ -52,7 +52,12 @@ public class AmbientDialogueScheduler {
                 return;
             }
 
-            var nearby = await _directorHelper.QueryObserverIdsAsync(playerId, null);
+            // Defense in depth: the mod's own activeNpcs table should never include the player
+            // (Morrowind's player character is itself an NPC-type object, so it's an easy leak),
+            // but never let the player get picked as a radiant-dialogue participant regardless.
+            var nearby = (await _directorHelper.QueryObserverIdsAsync(playerId, null))
+                .Where(id => !_worldState.IsPlayer(id))
+                .ToArray();
             if (nearby.Length < 2) {
                 Log.Trace("Ambient tick: only {Count} NPC(s) nearby, need 2+", nearby.Length);
                 return;

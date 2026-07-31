@@ -47,4 +47,4 @@ voiceCapture:
     silenceTimeoutMs: 1000
     # Global hotkey that flips hot mic on/off at runtime (independent of "enabled" above, which is
     # just the starting state). Set to "" or omit to disable the toggle entirely.
-    toggleKey: H
+    toggleKey: Num1
