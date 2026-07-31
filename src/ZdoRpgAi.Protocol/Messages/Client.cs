@@ -25,9 +25,14 @@ public enum ModToClientMessageType {
     // Unlike the other members here, this DOES get turned into a real server message -- see
     // ClientApplication.HandleModMessage, which repackages it as PlayerSpeaksText.
     ChatBoxTextSubmitted,
+    // The chat box's TextEdit widget gained/lost keyboard focus -- used to suppress the PTT and
+    // hot-mic-toggle keyboard hotkeys while the player is actively typing (see
+    // VoiceCaptureService.SetHotkeysSuppressed).
+    ChatBoxFocusChanged,
 }
 
 public record ChatBoxTextSubmittedPayload(string Text, string? TargetCharacterId);
+public record ChatBoxFocusChangedPayload(bool Focused);
 
 // Client → Both (Mod + Server)
 

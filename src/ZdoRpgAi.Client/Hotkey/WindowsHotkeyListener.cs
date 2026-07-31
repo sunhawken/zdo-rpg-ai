@@ -10,6 +10,7 @@ public class WindowsHotkeyListener : IHotkeyListener {
     private readonly string _keyName;
     private readonly int _pollIntervalMs;
     private volatile bool _wasPressed;
+    private volatile bool _suppressed;
     private CancellationTokenSource? _cts;
 
     public event Action? KeyPressed;
@@ -36,13 +37,17 @@ public class WindowsHotkeyListener : IHotkeyListener {
 
                 if (isPressed && !_wasPressed) {
                     _wasPressed = true;
-                    Log.Debug("Hotkey pressed: {Key}", _keyName);
-                    KeyPressed?.Invoke();
+                    if (!_suppressed) {
+                        Log.Debug("Hotkey pressed: {Key}", _keyName);
+                        KeyPressed?.Invoke();
+                    }
                 }
                 else if (!isPressed && _wasPressed) {
                     _wasPressed = false;
-                    Log.Debug("Hotkey released: {Key}", _keyName);
-                    KeyReleased?.Invoke();
+                    if (!_suppressed) {
+                        Log.Debug("Hotkey released: {Key}", _keyName);
+                        KeyReleased?.Invoke();
+                    }
                 }
 
                 await Task.Delay(_pollIntervalMs, linked.Token);
@@ -102,6 +107,10 @@ public class WindowsHotkeyListener : IHotkeyListener {
             _ => throw new ArgumentException(
                 $"Unknown key '{keyName}'. Supported: A-Z, 0-9, Num0-Num9, F1-F12, Space, Tab, Escape, modifier keys, Mouse4/Mouse5")
         };
+    }
+
+    public void SetSuppressed(bool suppressed) {
+        _suppressed = suppressed;
     }
 
     public void Dispose() {

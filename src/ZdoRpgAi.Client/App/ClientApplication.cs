@@ -155,6 +155,14 @@ public class ClientApplication : IDisposable {
                     }
                     return; // repackaged and forwarded above -- don't also forward the raw mod message
                 }
+            case nameof(ModToClientMessageType.ChatBoxFocusChanged): {
+                    var e = msg.Json?.DeserializeSafe(PayloadJsonContext.Default.ChatBoxFocusChangedPayload);
+                    if (e != null) {
+                        Log.Debug("Chat box focus {State} -> suppressing hotkeys: {Suppressed}", e.Focused ? "gained" : "lost", e.Focused);
+                        _voiceCapture?.SetHotkeysSuppressed(e.Focused);
+                    }
+                    return; // local trigger only, nothing to forward
+                }
         }
 
         _bridge.SendMessageToServer(msg);

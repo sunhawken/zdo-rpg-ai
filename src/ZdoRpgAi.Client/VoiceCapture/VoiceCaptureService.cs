@@ -237,6 +237,16 @@ public class VoiceCaptureService : IDisposable {
     /// <summary>Same toggle as the keyboard hot-mic hotkey, callable from an external trigger (a VR controller signal relayed from the mod).</summary>
     public void ToggleHotMicExternal() => HandleHotMicTogglePressed();
 
+    /// <summary>
+    /// Suppresses (or resumes) both keyboard hotkeys -- PTT and the hot-mic toggle -- without
+    /// touching hot mic's own VAD-based activation. Driven by the mod's chat box focus state, so
+    /// e.g. typing the letter the PTT key is bound to doesn't also start/stop the mic.
+    /// </summary>
+    public void SetHotkeysSuppressed(bool suppressed) {
+        _hotkey?.SetSuppressed(suppressed);
+        _hotMicToggleHotkey?.SetSuppressed(suppressed);
+    }
+
     // --- Push-to-talk handlers ---
 
     private void HandleKeyPressed() {
