@@ -21,7 +21,13 @@ public enum ModToClientMessageType {
     // Left thumb-rest touch (mirrors the right thumb-rest PTT trigger): tap to flip hot mic
     // on/off, the VR equivalent of the keyboard hot-mic toggle hotkey.
     VrHotMicTogglePressed,
+    // Player submitted the in-game chat box (player.lua TextEdit widget, opened with the T key).
+    // Unlike the other members here, this DOES get turned into a real server message -- see
+    // ClientApplication.HandleModMessage, which repackages it as PlayerSpeaksText.
+    ChatBoxTextSubmitted,
 }
+
+public record ChatBoxTextSubmittedPayload(string Text, string? TargetCharacterId);
 
 // Client → Both (Mod + Server)
 

@@ -32,6 +32,7 @@ namespace ZdoRpgAi.Protocol.Messages;
 // Client → Server
 [JsonSerializable(typeof(PlayerSpeaksTextPayload))]
 [JsonSerializable(typeof(PlayerSpeaksAudioPayload))]
+[JsonSerializable(typeof(ChatBoxTextSubmittedPayload))]
 // Mod → Server
 [JsonSerializable(typeof(PlayerAddedPayload))]
 [JsonSerializable(typeof(TargetChangedPayload))]

@@ -145,6 +145,16 @@ public class ClientApplication : IDisposable {
                 Log.Debug("VR hot mic toggle pressed");
                 _voiceCapture?.ToggleHotMicExternal();
                 return; // local trigger only, nothing to forward
+            case nameof(ModToClientMessageType.ChatBoxTextSubmitted): {
+                    var e = msg.Json?.DeserializeSafe(PayloadJsonContext.Default.ChatBoxTextSubmittedPayload);
+                    if (e != null && !string.IsNullOrWhiteSpace(e.Text)) {
+                        var payload = new PlayerSpeaksTextPayload(_localPlayerId ?? "player", e.Text, e.TargetCharacterId, "0");
+                        var data = JsonExtensions.SerializeToObject(payload, PayloadJsonContext.Default.PlayerSpeaksTextPayload);
+                        _bridge.SendMessageToServer(new Message(nameof(ClientToServerMessageType.PlayerSpeaksText), 0, null, data, null));
+                        Log.Info("Chat box submitted -> PlayerSpeaksText: '{Text}' (target={Target})", e.Text, e.TargetCharacterId ?? "(none)");
+                    }
+                    return; // repackaged and forwarded above -- don't also forward the raw mod message
+                }
         }
 
         _bridge.SendMessageToServer(msg);
