@@ -5,7 +5,10 @@ using ZdoRpgAi.Repository;
 
 namespace ZdoRpgAi.Server.Game.Npc;
 
-public record NpcInfo(string Id, string Name, string Race, string Sex, string? Class = null, string? Faction = null, string? FactionRank = null);
+// ActiveQuests is player-only (Morrowind's data model has no quest journal on NPCs) -- always
+// null for real NPCs, only ever populated when this represents the player (see
+// SimpleReactiveStrategy.GetCharacterInfoAsync).
+public record NpcInfo(string Id, string Name, string Race, string Sex, string? Class = null, string? Faction = null, string? FactionRank = null, string[]? ActiveQuests = null);
 
 public class NpcRepository {
     private static readonly ILog Log = Logger.Get<NpcRepository>();

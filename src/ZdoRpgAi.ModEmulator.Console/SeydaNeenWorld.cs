@@ -24,7 +24,8 @@ public static class SeydaNeenWorld {
         new(npc.ObjectId, npc.Name, npc.Race, npc.Sex, npc.Class, npc.Faction, npc.FactionRank);
 
     public static GetPlayerInfoResponsePayload PlayerInfo =>
-        new(PlayerId, "Player", "Dark Elf", "Male", "Warrior", "House Hlaalu", "Oathman");
+        new(PlayerId, "Player", "Dark Elf", "Male", "Warrior", "House Hlaalu", "Oathman",
+            ["Arrille has offered to buy any moon sugar I bring back from Addamasartus, no questions asked."]);
 
     public static GetLiveStateResponsePayload ToLiveState(NpcDefinition npc) =>
         new(npc.IsDead, npc.HealthCurrent, npc.HealthMax, CellName);

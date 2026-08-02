@@ -112,7 +112,7 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
                         new GetPlayerInfoRequestPayload(characterId),
                         PayloadJsonContext.Default.GetPlayerInfoRequestPayload));
                 var payload = response.Json?.DeserializeSafe(PayloadJsonContext.Default.GetPlayerInfoResponsePayload);
-                return payload == null ? null : new NpcInfo(payload.ObjectId, payload.Name, payload.Race, payload.Sex, payload.Class, payload.Faction, payload.FactionRank);
+                return payload == null ? null : new NpcInfo(payload.ObjectId, payload.Name, payload.Race, payload.Sex, payload.Class, payload.Faction, payload.FactionRank, payload.ActiveQuests);
             }
             catch (Exception ex) {
                 Log.Warn("Failed to query player info for {CharacterId}: {Error}", characterId, ex.Message);
@@ -256,6 +256,11 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
         var interlocutorLine = interlocutor != null
             ? $"\nYou are speaking with {interlocutor.Name}, a {interlocutor.Race} ({interlocutor.Sex}){(interlocutor.Class != null ? $", a {interlocutor.Class}" : "")}.{FormatInterlocutorFaction(interlocutor)}"
             : "";
+        var questsLine = "";
+        if (interlocutor?.ActiveQuests is { Length: > 0 } activeQuests) {
+            var questList = string.Join("\n", activeQuests.Select(q => $"- {q}"));
+            questsLine = $"\n{interlocutor.Name} is currently occupied with (from rumor/local knowledge, not necessarily things you'd have any reason to know unless it makes sense for your character):\n{questList}";
+        }
         var healthLine = "";
         if (liveState != null) {
             if (liveState.IsDead) {
@@ -273,9 +278,9 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
         }
 
         var systemPrompt = $"""
-            You are {npc.Name}, a {npc.Race} ({npc.Sex}){classLine}, living in Morrowind.{factionLine}{locationLine}{healthLine}{interlocutorLine}
+            You are {npc.Name}, a {npc.Race} ({npc.Sex}){classLine}, living in Morrowind.{factionLine}{locationLine}{healthLine}{interlocutorLine}{questsLine}
             Stay in character. Speak briefly and naturally. Do not mention that you are an AI. Always respond in the English language.
-            Let your class, faction, health, location, and who you're speaking with subtly color your speech and attitude where it's natural to do so (Morrowind's races, factions, and cultures have real rivalries and affinities -- Houses, guilds, and other factions do not always get along) -- don't recite these facts, just be shaped by them.
+            Let your class, faction, health, location, who you're speaking with, and what they're currently occupied with subtly color your speech and attitude where it's natural to do so (Morrowind's races, factions, and cultures have real rivalries and affinities -- Houses, guilds, and other factions do not always get along) -- don't recite these facts, just be shaped by them. Only bring up someone's business unprompted if your character would plausibly know or care about it.
 
             You will be told what other characters say and do. Reply only with your own speech.
 
