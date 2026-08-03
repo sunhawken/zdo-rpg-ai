@@ -12,14 +12,16 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
 
     private readonly ILlm _mainLlm;
     private readonly ILlm _simpleLlm;
+    private readonly ILlm _combatLlm;
     private readonly IStory _story;
     private readonly NpcRepository _npcRepo;
     private readonly IRpcChannel _rpc;
     private readonly WorldState _worldState;
 
-    public SimpleReactiveStrategy(ILlm mainLlm, ILlm simpleLlm, IStory story, NpcRepository npcRepo, IRpcChannel rpc, WorldState worldState) {
+    public SimpleReactiveStrategy(ILlm mainLlm, ILlm simpleLlm, ILlm combatLlm, IStory story, NpcRepository npcRepo, IRpcChannel rpc, WorldState worldState) {
         _mainLlm = mainLlm;
         _simpleLlm = simpleLlm;
+        _combatLlm = combatLlm;
         _story = story;
         _npcRepo = npcRepo;
         _rpc = rpc;
@@ -103,7 +105,7 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
     }
 
     /// <summary>Resolves a character id to name/race/sex/class, whether it's the player or an NPC.</summary>
-    private async Task<NpcInfo?> GetCharacterInfoAsync(string characterId) {
+    public async Task<NpcInfo?> GetCharacterInfoAsync(string characterId) {
         if (_worldState.IsPlayer(characterId)) {
             try {
                 var response = await _rpc.CallAsync(
@@ -219,6 +221,56 @@ public class SimpleReactiveStrategy : IDirectorStrategy {
         };
 
         var response = await _simpleLlm.ChatAsync(request);
+        return response.Text?.Trim();
+    }
+
+    /// <summary>Short, cheap in-combat line directed at whatever this NPC is currently fighting -- a
+    /// battle cry, taunt, warning, or cry of pain/fear, not conversation. Target can be the player
+    /// or another NPC.
+    ///
+    /// Deliberately routed through _combatLlm rather than _simpleLlm: OpenAI's own moderation
+    /// (proxied through by NanoGPT's "openai" provider) reliably 400s on ANY prompt that names two
+    /// characters as being in "combat"/"confrontation" with each other -- confirmed via direct API
+    /// testing that this rejects even completely mundane one-line game dialogue, on both gpt-4o and
+    /// gpt-4o-mini, regardless of how mild the surrounding wording is. Open-weight models routed
+    /// through the same NanoGPT key don't hit this filter at all (tested clean on
+    /// meta-llama/llama-3.1-70b-instruct), hence the separate configurable LLM slot -- see
+    /// ServerConfig.LlmSection.Combat.</summary>
+    public async Task<string?> GenerateCombatBarkAsync(NpcInfo speaker, NpcInfo target) {
+        var classLine = speaker.Class != null ? $" ({speaker.Class})" : "";
+        var factionLine = speaker.Faction != null
+            ? $" You belong to {speaker.Faction}{(speaker.FactionRank != null ? $", holding the rank of {speaker.FactionRank}" : "")}."
+            : "";
+
+        var liveState = await QueryLiveStateAsync(speaker.Id);
+        var conditionLine = "";
+        if (liveState is { HealthMax: > 0 }) {
+            var pct = liveState.HealthCurrent / liveState.HealthMax;
+            conditionLine = pct switch {
+                < 0.25f => " You are gravely wounded and may be about to lose this fight -- let real fear, desperation, or grim defiance show.",
+                < 0.6f => " You are hurting but still fighting.",
+                _ => "",
+            };
+        }
+
+        var systemPrompt = $"""
+            You are {speaker.Name}, a {speaker.Race} ({speaker.Sex}){classLine}, living in Morrowind.{factionLine}
+            You are in combat, fighting {target.Name}, a {target.Race} ({target.Sex}).{FormatInterlocutorFaction(target)}{conditionLine}
+            Shout ONE short, aggressive/defiant/taunting/desperate line directed AT {target.Name}, fitting
+            your character and the moment -- a battle cry, taunt, warning, or cry of pain/fear. This is
+            NOT conversation, it's the middle of a fight. Do not mention that you are an AI.
+            Always respond in the English language. Reply ONLY with the shouted line -- no narration,
+            no prefixes, no stage directions.
+            """;
+
+        var request = new LlmRequest {
+            SystemPrompt = systemPrompt,
+            Messages = [
+                new LlmMessage { Role = LlmRole.User, Text = $"Shout something at {target.Name} mid-combat." },
+            ],
+        };
+
+        var response = await _combatLlm.ChatAsync(request);
         return response.Text?.Trim();
     }
 

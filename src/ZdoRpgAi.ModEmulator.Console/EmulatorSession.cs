@@ -45,6 +45,14 @@ public class EmulatorSession {
         Log.Info("Player says: \"{Text}\" (target: {Target})", text, _targetNpcId ?? "(none)");
     }
 
+    public void SendNpcCombatStarted(string npcId, string targetId) {
+        var payload = JsonExtensions.SerializeToObject(
+            new NpcCombatEventPayload(npcId, targetId),
+            PayloadJsonContext.Default.NpcCombatEventPayload);
+        _rpc.Publish(nameof(ModToServerMessageType.NpcCombatStarted), payload);
+        Log.Info("Sent NpcCombatStarted: {NpcId} -> {TargetId}", npcId, targetId);
+    }
+
     public void SetTarget(string? npcId) {
         _targetNpcId = npcId;
         var payload = JsonExtensions.SerializeToObject(

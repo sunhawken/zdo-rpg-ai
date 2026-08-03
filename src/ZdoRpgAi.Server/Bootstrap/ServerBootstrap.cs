@@ -37,10 +37,11 @@ public static class ServerBootstrap {
         var stt = CreateStt(config.Stt);
         var mainLlm = CreateLlm("main", config.Llm.Main);
         var simpleLlm = CreateLlm("simple", config.Llm.Simple);
+        var combatLlm = CreateLlm("combat", config.Llm.Combat ?? config.Llm.Simple);
         var lua = new LuaSandbox();
         var httpServer = new HttpServer(config.HttpServer);
 
-        return new ServerApplication(mainRepo, saveGameRepo, tts, stt, mainLlm, simpleLlm, lua, httpServer, config.Director, config.Tts.Mp3Speed);
+        return new ServerApplication(mainRepo, saveGameRepo, tts, stt, mainLlm, simpleLlm, combatLlm, lua, httpServer, config.Director, config.Tts.Mp3Speed);
     }
 
     private static ITextToSpeech CreateTts(TtsSection config) {

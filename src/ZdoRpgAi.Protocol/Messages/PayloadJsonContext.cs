@@ -41,4 +41,5 @@ namespace ZdoRpgAi.Protocol.Messages;
 [JsonSerializable(typeof(GameSaveLoadPayload))]
 [JsonSerializable(typeof(NearbyCharacterInfo))]
 [JsonSerializable(typeof(GetCharactersWhoHearResponsePayload))]
+[JsonSerializable(typeof(NpcCombatEventPayload))]
 public partial class PayloadJsonContext : JsonSerializerContext;

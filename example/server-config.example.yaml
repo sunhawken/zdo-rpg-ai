@@ -93,3 +93,14 @@ llm:
     #   apiKey: ""
     #   model: gpt-4o-mini
     #   baseUrl: https://api.openai.com
+  # Optional, separate model for combat barks -- falls back to "simple" above if omitted. Worth
+  # setting to a non-OpenAI-branded model if using an OpenAI-compatible proxy: OpenAI's own
+  # moderation reliably rejects prompts that name two characters as being "in combat" with each
+  # other, even for completely mundane one-line game dialogue. Open-weight models (e.g.
+  # meta-llama/llama-3.1-70b-instruct via NanoGPT) don't hit this filter.
+  # combat:
+  #   provider: dummy
+  #   openAi:
+  #     apiKey: ""
+  #     model: meta-llama/llama-3.1-70b-instruct
+  #     baseUrl: https://api.openai.com

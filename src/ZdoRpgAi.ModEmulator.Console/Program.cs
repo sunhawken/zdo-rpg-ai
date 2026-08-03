@@ -6,11 +6,13 @@ var parser = new CommandLineArgsParser("Zdo RPG AI Mod Emulator", BuildInfo.Vers
 parser.Add("--host", "Host to listen on", defaultValue: "localhost");
 parser.Add("-p", "--port", "Port to listen on", defaultValue: "8081");
 parser.Add("--auto-say", "Non-interactive smoke test: once a client connects, say this to the default target and exit after the reply", defaultValue: "");
+parser.Add("--auto-combat", "Non-interactive smoke test: once a client connects, report '<npcId>:<targetId>' as NpcCombatStarted and exit after the reply", defaultValue: "");
 
 var parsed = parser.Parse(args);
 var host = parsed.Get("--host")!;
 var port = int.Parse(parsed.Get("--port")!);
 var autoSay = parsed.Get("--auto-say");
+var autoCombat = parsed.Get("--auto-combat");
 
 Logger.Configure(new LogConfig { ConsoleLevel = LogLevel.Debug });
 var log = Logger.Get<EmulatorServer>();
@@ -62,6 +64,39 @@ if (!string.IsNullOrEmpty(autoSay)) {
     return;
 }
 
+if (!string.IsNullOrEmpty(autoCombat)) {
+    var parts = autoCombat.Split(':', 2);
+    if (parts.Length != 2) {
+        log.Error("--auto-combat expects '<npcId>:<targetId>'");
+        return;
+    }
+    var (npcId, targetId) = (parts[0], parts[1]);
+
+    _ = Task.Run(async () => {
+        log.Info("[auto-combat] Waiting for client to connect...");
+        while (server.Session == null && !cts.Token.IsCancellationRequested) {
+            await Task.Delay(200, cts.Token).ConfigureAwait(false);
+        }
+        if (cts.Token.IsCancellationRequested) return;
+
+        await Task.Delay(5000, cts.Token).ConfigureAwait(false);
+        log.Info("[auto-combat] Reporting: {NpcId} -> {TargetId}", npcId, targetId);
+        server.Session!.SendNpcCombatStarted(npcId, targetId);
+
+        await Task.Delay(30000, cts.Token).ConfigureAwait(false); // window for LLM+TTS round trip
+        log.Info("[auto-combat] Done, shutting down");
+        cts.Cancel();
+    }, cts.Token);
+
+    try {
+        await serverTask;
+    }
+    catch (OperationCanceledException) {
+        // Normal shutdown
+    }
+    return;
+}
+
 // Interactive command loop
 var input = new ConsoleInput();
 _ = Task.Run(async () => {
@@ -98,6 +133,18 @@ _ = Task.Run(async () => {
                     session!.SendPlayerSpeaksText(parts[1]);
                 }
                 break;
+            case "combat" or "c":
+                if (parts.Length < 2) {
+                    log.Info("Usage: combat <npc_id> <target_id | player>");
+                } else {
+                    var combatArgs = parts[1].Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+                    if (combatArgs.Length < 2) {
+                        log.Info("Usage: combat <npc_id> <target_id | player>");
+                    } else {
+                        session!.SendNpcCombatStarted(combatArgs[0], combatArgs[1]);
+                    }
+                }
+                break;
             case "npcs":
                 foreach (var npc in SeydaNeenWorld.Npcs) {
                     log.Info("  {ObjectId}: {Name} ({Race}, {Sex})", npc.ObjectId, npc.Name, npc.Race, npc.Sex);
@@ -126,6 +173,7 @@ catch (OperationCanceledException) {
 void PrintHelp() {
     log.Info("Commands:");
     log.Info("  say <text>       - Send player speech text to server (alias: s)");
+    log.Info("  combat <npc> <target> - Report npc as entering combat against target (alias: c)");
     log.Info("  target <npc_id>  - Set player target NPC (alias: t)");
     log.Info("  target clear     - Clear player target");
     log.Info("  npcs             - List available NPCs");

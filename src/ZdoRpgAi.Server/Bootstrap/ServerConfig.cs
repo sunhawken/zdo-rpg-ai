@@ -62,6 +62,12 @@ public class SttSection {
 public class LlmSection {
     public required LlmProviderSection Main { get; set; }
     public required LlmProviderSection Simple { get; set; }
+    // Optional, separate model for combat barks -- falls back to Simple if not set. Exists because
+    // OpenAI's own moderation (proxied through by at least the "openai" provider on NanoGPT) reliably
+    // rejects any prompt that names two characters as being "in combat"/"confrontation" with each
+    // other, even for completely mundane one-line game dialogue -- open-weight models routed through
+    // the same NanoGPT key (tested: meta-llama/llama-3.1-70b-instruct) don't hit this at all.
+    public LlmProviderSection? Combat { get; set; }
 }
 
 public class LlmProviderSection {

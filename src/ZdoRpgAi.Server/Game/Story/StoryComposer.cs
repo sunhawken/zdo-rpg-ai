@@ -12,11 +12,13 @@ public class StoryComposer {
     private readonly Story _story;
     private readonly DirectorHelper _directorHelper;
     private readonly WorldState _worldState;
+    private readonly Director.Director _director;
 
-    public StoryComposer(Story story, DirectorHelper directorHelper, WorldState worldState, IRpcChannel rpc) {
+    public StoryComposer(Story story, DirectorHelper directorHelper, WorldState worldState, Director.Director director, IRpcChannel rpc) {
         _story = story;
         _directorHelper = directorHelper;
         _worldState = worldState;
+        _director = director;
         rpc.MessageReceived += OnMessageReceived;
     }
 
@@ -71,6 +73,16 @@ public class StoryComposer {
                     }
 
                     _worldState.AddPlayerId(payload.PlayerId);
+                    break;
+                }
+            case nameof(ModToServerMessageType.NpcCombatStarted):
+            case nameof(ModToServerMessageType.NpcCombatTick): {
+                    var payload = msg.Json?.DeserializeSafe(PayloadJsonContext.Default.NpcCombatEventPayload);
+                    if (payload == null) {
+                        return;
+                    }
+
+                    _ = _director.TryStartCombatBarkAsync(payload.NpcId, payload.TargetId);
                     break;
                 }
         }

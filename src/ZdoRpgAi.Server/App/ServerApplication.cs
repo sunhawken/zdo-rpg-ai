@@ -27,13 +27,13 @@ public class ServerApplication : IDisposable {
 
     public ServerApplication(
         IMainRepository mainRepo, ISaveGameRepository saveGameRepo,
-        ITextToSpeech tts, ISpeechToText stt, ILlm mainLlm, ILlm simpleLlm, LuaSandbox lua,
+        ITextToSpeech tts, ISpeechToText stt, ILlm mainLlm, ILlm simpleLlm, ILlm combatLlm, LuaSandbox lua,
         HttpServer httpServer, DirectorSection directorConfig, Mp3SpeedConfig mp3SpeedConfig) {
         _mainRepo = mainRepo;
         _saveGameRepo = saveGameRepo;
         _stt = stt;
         _httpServer = httpServer;
-        _game = new Game.GameRunner(mainRepo, saveGameRepo, _reusableRpc, tts, stt, mainLlm, simpleLlm, lua, directorConfig, mp3SpeedConfig);
+        _game = new Game.GameRunner(mainRepo, saveGameRepo, _reusableRpc, tts, stt, mainLlm, simpleLlm, combatLlm, lua, directorConfig, mp3SpeedConfig);
 
         _httpServer.ClientConnected += OnClientConnected;
     }

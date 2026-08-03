@@ -28,14 +28,14 @@ public class Director {
     private int _playerInterruptionIteration = 0;
     private int _ambientChainDepth = 0;
 
-    public Director(Story.Story story, DirectorHelper directorHelper, NpcSpeechGenerator npcSpeechGenerator, IRpcChannel rpc, ILlm mainLlm, ILlm simpleLlm, NpcRepository npcRepo, WorldState worldState) {
+    public Director(Story.Story story, DirectorHelper directorHelper, NpcSpeechGenerator npcSpeechGenerator, IRpcChannel rpc, ILlm mainLlm, ILlm simpleLlm, ILlm combatLlm, NpcRepository npcRepo, WorldState worldState) {
         _story = story;
         _directorHelper = directorHelper;
         _npcSpeechGenerator = npcSpeechGenerator;
         _rpc = rpc;
         _npcRepo = npcRepo;
         _worldState = worldState;
-        _simpleReactive = new SimpleReactiveStrategy(mainLlm, simpleLlm, story, npcRepo, rpc, worldState);
+        _simpleReactive = new SimpleReactiveStrategy(mainLlm, simpleLlm, combatLlm, story, npcRepo, rpc, worldState);
         story.EventRegistered += OnStoryEventRegistered;
     }
 
@@ -113,6 +113,57 @@ public class Director {
         }
         catch (Exception ex) {
             Log.Error("TryStartAmbientDialogueAsync failed: {Error}", ex.Message);
+        }
+        finally {
+            await DrainBufferAsync();
+        }
+    }
+
+    /// <summary>
+    /// Entry point for the per-NPC combat local script: a short, combat-flavored line directed at
+    /// whatever this NPC is currently fighting (player or another NPC). Same busy-lock/buffer
+    /// pattern as TryStartAmbientDialogueAsync -- skip rather than queue if the director's busy,
+    /// the mod will just report the next tick anyway.
+    /// </summary>
+    public async Task TryStartCombatBarkAsync(string npcId, string targetId) {
+        lock (_bufferLock) {
+            if (_processing) {
+                Log.Trace("Skipping combat bark attempt, director busy");
+                return;
+            }
+            _processing = true;
+        }
+
+        try {
+            var speakerInfo = await _npcRepo.GetNpcInfoAsync(npcId);
+            if (speakerInfo == null) {
+                Log.Trace("Combat bark: missing info for {Npc}", npcId);
+                return;
+            }
+
+            var targetInfo = await _simpleReactive.GetCharacterInfoAsync(targetId);
+            if (targetInfo == null) {
+                Log.Trace("Combat bark: missing info for target {Target}", targetId);
+                return;
+            }
+
+            var line = await _simpleReactive.GenerateCombatBarkAsync(speakerInfo, targetInfo);
+            if (string.IsNullOrWhiteSpace(line)) {
+                Log.Trace("Combat bark: empty line from {Npc}", npcId);
+                return;
+            }
+
+            var evt = StoryEvent.Create(new StoryEvent.NpcSpeak {
+                NpcCharacterId = npcId,
+                TargetCharacterId = targetId,
+                GameTime = StoryEvent.GetRealTime(),
+                Text = line,
+            });
+            Log.Info("Combat bark: {Npc} -> {Target}: {Text}", npcId, targetId, line);
+            await RegisterAndPublishAsync([evt]);
+        }
+        catch (Exception ex) {
+            Log.Error("TryStartCombatBarkAsync failed: {Error}", ex.Message);
         }
         finally {
             await DrainBufferAsync();
