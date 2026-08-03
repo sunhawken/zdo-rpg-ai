@@ -33,7 +33,10 @@ public class WindowsHotkeyListener : IHotkeyListener {
             while (!linked.Token.IsCancellationRequested) {
                 // High bit set means the key is currently down. Works globally (any window
                 // focused, including a fullscreen/exclusive game), no special permissions needed.
-                var isPressed = (GetAsyncKeyState(_virtualKeyCode) & 0x8000) != 0;
+                // Ctrl-held presses don't count -- e.g. the mod's chat box uses Ctrl+Y to avoid
+                // colliding with the bare "Y" PTT hotkey, so PTT must not fire for that combo.
+                var ctrlHeld = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+                var isPressed = !ctrlHeld && (GetAsyncKeyState(_virtualKeyCode) & 0x8000) != 0;
 
                 if (isPressed && !_wasPressed) {
                     _wasPressed = true;
@@ -59,6 +62,8 @@ public class WindowsHotkeyListener : IHotkeyListener {
 
         Log.Debug("Hotkey polling stopped");
     }
+
+    private const int VK_CONTROL = 0x11;
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);

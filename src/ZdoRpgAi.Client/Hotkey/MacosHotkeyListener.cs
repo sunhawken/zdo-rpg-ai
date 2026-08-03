@@ -31,7 +31,10 @@ public class MacosHotkeyListener : IHotkeyListener {
 
         try {
             while (!linked.Token.IsCancellationRequested) {
-                var isPressed = CGEventSourceKeyState(
+                // Ctrl-held presses don't count -- e.g. the mod's chat box uses Ctrl+Y to avoid
+                // colliding with the bare "Y" PTT hotkey, so PTT must not fire for that combo.
+                var ctrlHeld = CGEventSourceKeyState(0, KVK_CONTROL) || CGEventSourceKeyState(0, KVK_RIGHT_CONTROL);
+                var isPressed = !ctrlHeld && CGEventSourceKeyState(
                     0, // kCGEventSourceStateCombinedSessionState
                     _macKeyCode);
 
@@ -59,6 +62,9 @@ public class MacosHotkeyListener : IHotkeyListener {
 
         Log.Debug("Hotkey polling stopped");
     }
+
+    private const ushort KVK_CONTROL = 0x3B;
+    private const ushort KVK_RIGHT_CONTROL = 0x3E;
 
     // macOS CoreGraphics — checks if a key is currently held down.
     // Works globally (any app focused), no accessibility permission required.
